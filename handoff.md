@@ -25,7 +25,9 @@ Dashboard tĩnh (`index.html`) đọc `Facebook_Group_Insights_8-07-2026.csv`, h
 ## Việc CÒN DANG DỞ / chưa làm
 
 - **"Chuỗi phong độ"** — ý tưởng gác lại: trích nguyên văn 1 câu nổi bật từ nội dung Top Posts (vd narrative "Lan Huong 6 tuần liên tiếp Top 2" mà admin tự viết trong bài AI Power Ranking hàng tuần) để làm caption phụ cho leaderboard. Chưa làm vì cần đọc tay để trích đúng, tự động hoá dễ trích sai/gán nhầm người — rủi ro theo quy tắc chính xác của Phong. Nếu làm: đọc trực tiếp cột `title` trong `data.topPosts` (qua `data-parser.js`), KHÔNG suy diễn/viết lại câu, chỉ trích nguyên văn.
-- **Deploy** — ĐÃ XONG (07/08/2026). Git repo private tại [github.com/Phong-EpicMind/dashboard-yeu-chatgpt-ai-chat](https://github.com/Phong-EpicMind/dashboard-yeu-chatgpt-ai-chat), deploy công khai (không Access) tại https://dashboard-yeu-chatgpt-ai-chat.pages.dev qua `wrangler pages deploy .`. Cập nhật CSV mới thì deploy lại bằng lệnh đó trong thư mục này.
+- **Deploy** — ĐÃ XONG (07/08/2026). Git repo private tại [github.com/Phong-EpicMind/dashboard-yeu-chatgpt-ai-chat](https://github.com/Phong-EpicMind/dashboard-yeu-chatgpt-ai-chat), deploy công khai (không Access) tại https://dashboard-yeu-chatgpt-ai-chat.pages.dev.
+  - **QUAN TRỌNG: chỉ deploy thư mục `public/`, KHÔNG deploy `.` (thư mục gốc)** — rà bảo mật phát hiện deploy `.` từng đẩy công khai cả CLAUDE.md/handoff.md/CONTEXT.md/ADR lên trang public. Lệnh đúng: `wrangler pages deploy public --project-name=dashboard-yeu-chatgpt-ai-chat`.
+  - Khi cập nhật CSV mới hoặc sửa `index.html`/`style.css`/`data-parser.js`/`topics.json`: sửa ở bản gốc (thư mục ngoài) rồi copy đè vào `public/` trước khi deploy lại, hoặc sửa thẳng trong `public/` — nhớ đồng bộ 2 nơi nếu sửa ở ngoài.
 - **Cập nhật dữ liệu định kỳ** — Phong nói "chỉ thử 1 lần xem có dựng được không đã" (chưa xác nhận có xuất CSV mới định kỳ hay không). Nếu có CSV mới: đổi hằng số `CSV_FILE` trong `index.html`, và **phải rà lại `topics.json` bằng tay** (không tự động, xem ADR 0003).
 
 ## Nếu Phong quay lại hỏi "làm tiếp đi"
