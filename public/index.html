@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thành Viên Tích Cực - Yêu ChatGPT & AI Chất</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="dot"></span>yêu-chatgpt-ai-chất <span>/ community dashboard</span></div>
+  </header>
+
+  <div class="hero">
+    <div class="prompt-line">$ group-insights --parse<span class="cursor"></span></div>
+    <h1>Thành Viên Tích Cực Cộng Đồng Yêu ChatGPT &amp; AI Chất</h1>
+    <p>Ai đang đóng góp, ngày nào sôi động nhất, và bài nào đang gây sóng - dựng từ dữ liệu Group Insights do admin xuất thủ công.</p>
+  </div>
+
+  <div id="app">
+    <div class="loading">$ đang đọc dữ liệu...</div>
+  </div>
+
+  <footer class="foot">Dữ liệu Group Insights - cập nhật thủ công bởi admin, không phải real-time.</footer>
+</div>
+
+<script src="data-parser.js"></script>
+<script>
+const CSV_FILE = 'Facebook_Group_Insights_8-07-2026.csv';
+const numVi = new Intl.NumberFormat('vi-VN');
+const fmtDate = (iso) => { const [y,m,d] = iso.split('-'); return `${d}/${m}`; };
+
+const PALETTE = ['#FF6B35', '#00D4FF', '#A855F7', '#10B981', '#F0577A', '#FFA35C', '#5FE3D0'];
+function colorFor(index) { return PALETTE[index % PALETTE.length]; }
+
+function rankBadge(i) {
+  if (i === 0) return '🥇';
+  if (i === 1) return '🥈';
+  if (i === 2) return '🥉';
+  return String(i + 1).padStart(2, '0');
+}
+
+function renderLeaderboard(container, ranked) {
+  const top = ranked.slice(0, 10);
+  const max = top[0].mindsharePct;
+  container.innerHTML = top.map((c, i) => `
+    <div class="rank-row">
+      <div class="rank-badge">${rankBadge(i)}</div>
+      <div class="rank-body">
+        <div class="rank-top">
+          <span class="rank-name">${c.name}</span>
+          <span class="rank-pct mono">${c.mindsharePct.toFixed(1)}%</span>
+        </div>
+        <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${(c.mindsharePct / max) * 100}%;background:${colorFor(i)}"></div></div>
+        <div class="rank-meta mono">${c.posts} bài · ${c.comments} bình luận · ${c.likes} like</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderTopicsGrep(container, topics) {
+  const sorted = [...topics].sort((a, b) => b.count - a.count);
+  const max = sorted[0].count;
+  container.innerHTML = sorted.map((t, i) => `
+    <div class="grep-row">
+      <span class="grep-count mono" style="color:${colorFor(i)}">${String(t.count).padStart(2, '0')}</span>
+      <span class="grep-label">${t.label}</span>
+      <span class="grep-bar-track"><span class="grep-bar-fill" style="width:${(t.count / max) * 100}%;background:${colorFor(i)}"></span></span>
+    </div>
+  `).join('');
+}
+
+function renderModerationLog(container, adminModeration) {
+  container.innerHTML = adminModeration.map((a) => `
+    <div class="modlog-row mono">
+      <span class="modlog-admin">${a.admin}</span>
+      <span class="modlog-tag approved">✔ approved ${numVi.format(a.postsApproved)}</span>
+      <span class="modlog-tag declined">✕ declined ${numVi.format(a.postsDeclined)}</span>
+      <span class="modlog-tag removed">🗑 removed ${numVi.format(a.postsRemoved)}</span>
+    </div>
+  `).join('');
+}
+
+const SPARK_CHARS = '▁▂▃▄▅▆▇█';
+function sparkline(daily, key) {
+  const sorted = [...daily].sort((a, b) => a.date.localeCompare(b.date));
+  const values = sorted.map((d) => d[key]);
+  const max = Math.max(...values), min = Math.min(...values);
+  return values.map((v) => {
+    const ratio = max === min ? 0.5 : (v - min) / (max - min);
+    return SPARK_CHARS[Math.min(SPARK_CHARS.length - 1, Math.floor(ratio * SPARK_CHARS.length))];
+  }).join('');
+}
+
+function renderWeekdayChart(container, weekdayActivity) {
+  const labelsVi = { Monday: 'T2', Tuesday: 'T3', Wednesday: 'T4', Thursday: 'T5', Friday: 'T6', Saturday: 'T7', Sunday: 'CN' };
+  const max = Math.max(...weekdayActivity.map((d) => d.value));
+  container.innerHTML = weekdayActivity.map((d) => `
+    <div class="weekday-col">
+      <div class="weekday-bar" style="height:${Math.max((d.value / max) * 100, 4)}%" title="${labelsVi[d.weekday]}: ${numVi.format(d.value)}"></div>
+      <div class="weekday-label">${labelsVi[d.weekday] || d.weekday}</div>
+    </div>
+  `).join('');
+}
+
+function deltaHtml(card, previousLabel) {
+  if (card.pctChange === null) return '<div class="stat-delta">không có kỳ trước để so sánh</div>';
+  const up = card.pctChange >= 0;
+  const arrow = up ? '▲' : '▼';
+  const cls = up ? 'up' : 'down';
+  return `<div class="stat-delta ${cls}">${arrow} ${Math.abs(card.pctChange).toFixed(1)}%
+    <span class="period">so với ${previousLabel || 'kỳ trước'}</span></div>`;
+}
+
+async function main() {
+  const app = document.getElementById('app');
+  let csvText;
+  try {
+    const res = await fetch(CSV_FILE);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    csvText = await res.text();
+  } catch (err) {
+    app.innerHTML = `<div class="error-box">
+      Không đọc được file <code>${CSV_FILE}</code>.<br>
+      Nếu bạn mở file này bằng cách double-click (file://), trình duyệt sẽ chặn đọc CSV cùng thư mục vì lý do bảo mật (CORS).<br>
+      Hãy chạy: <code>python3 -m http.server 8000</code> trong thư mục này rồi mở <code>http://localhost:8000</code>.
+    </div>`;
+    console.error(err);
+    return;
+  }
+
+  const data = window.DataParser.parseGroupInsights(csvText);
+  const ranked = window.DataParser.computeMindshare(data.contributors);
+  const overview = window.DataParser.computeOverviewCards(data.daily);
+  const periodLabel = `${fmtDate(overview.periodLabel.split(' - ')[0])} - ${fmtDate(overview.periodLabel.split(' - ')[1])}`;
+  const prevLabelShort = overview.previousPeriodLabel
+    ? `${fmtDate(overview.previousPeriodLabel.split(' - ')[0])} - ${fmtDate(overview.previousPeriodLabel.split(' - ')[1])}`
+    : null;
+
+  const topPost = [...data.topPosts].sort((a, b) => b.views - a.views)[0];
+  const { peak, quiet } = window.DataParser.findPeakAndQuietDay(data.daily, 'viewed');
+  const efficiency = window.DataParser.computeContentEfficiency(data.daily);
+  const viewsSpark = sparkline(data.daily, 'viewed');
+  const postsSpark = sparkline(data.daily, 'posts');
+
+  app.innerHTML = `
+    <div class="grid-main">
+      <div class="info-card">
+        <div>
+          <div class="tag mono">// group-insights</div>
+          <h2>Ai đang đóng góp nhiều nhất cho cộng đồng?</h2>
+          <p>Xếp hạng dựa trên số bài đăng, bình luận và lượt thích trong kỳ báo cáo hiện có.</p>
+        </div>
+        <div class="period-box">
+          <b>Kỳ báo cáo hiện tại</b>
+          ${periodLabel} · ${data.daily.length} ngày
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="term-head">
+          <div class="term-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <span class="term-label">leaderboard.sh --by mindshare</span>
+        </div>
+        <div class="rank-list" id="leaderboard"></div>
+        <div class="mindshare-note" title="Mindshare = Posts×3 + Comments×1 + Likes×0.5, chuẩn hoá theo tổng. Xem docs/adr/0001-mindshare-score-formula.md">ⓘ % Mindshare là chỉ số nội bộ, không phải số Facebook cung cấp</div>
+      </div>
+
+      <div class="panel">
+        <div class="term-head">
+          <div class="term-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <span class="term-label">grep -c chủ-đề posts/*.md</span>
+        </div>
+        <div class="grep-list" id="topics-grep"></div>
+        <div class="mindshare-note" id="topics-note"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:18px">
+      <div class="term-head">
+        <div class="term-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+        <span class="term-label">tail -f moderation.log</span>
+      </div>
+      <div class="modlog" id="modlog"></div>
+    </div>
+
+    <div class="panel" style="margin-top:18px">
+      <div class="term-head">
+        <div class="term-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+        <span class="term-label">awk '{print peak, quiet, avg}' daily.log</span>
+      </div>
+      <div class="pulse-row">
+        <div class="pulse-col">
+          <div class="pulse-label">ⓘ ngày cao điểm (lượt xem)</div>
+          <div class="pulse-value peak">${fmtDate(peak.date)}</div>
+          <div class="pulse-sub">${numVi.format(peak.viewed)} views · ${peak.posts} bài</div>
+        </div>
+        <div class="pulse-col">
+          <div class="pulse-label">ⓘ ngày thấp điểm (lượt xem)</div>
+          <div class="pulse-value quiet">${fmtDate(quiet.date)}</div>
+          <div class="pulse-sub">${numVi.format(quiet.viewed)} views · ${quiet.posts} bài</div>
+        </div>
+        <div class="pulse-col">
+          <div class="pulse-label">ⓘ hiệu suất / bài (views trung bình)</div>
+          <div class="pulse-value">${numVi.format(Math.round(efficiency.currentAvg))}</div>
+          <div class="pulse-sub">${efficiency.pctChange === null ? 'không có kỳ trước' : `${efficiency.pctChange >= 0 ? '▲' : '▼'} ${Math.abs(efficiency.pctChange).toFixed(1)}% so kỳ trước`}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row-2col">
+      <div class="panel">
+        <div class="term-head">
+          <div class="term-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <span class="term-label">bài-nổi-bật.md</span>
+        </div>
+        <div class="spotlight">
+          <span class="spotlight-badge">🔥 Top view</span>
+          <div class="spotlight-title">${topPost.title.length > 140 ? topPost.title.slice(0, 140) + '…' : topPost.title}</div>
+          <div class="spotlight-meta">
+            <span>✍️ ${topPost.member}</span>
+            <span>👁 ${numVi.format(topPost.views)} views</span>
+            <span>💬 ${numVi.format(topPost.comments)}</span>
+            <span>❤️ ${numVi.format(topPost.reactions)}</span>
+          </div>
+          <a class="spotlight-link" href="${topPost.link}" target="_blank" rel="noopener">→ xem bài gốc trên Facebook</a>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="term-head">
+          <div class="term-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+          <span class="term-label">nhịp-theo-thứ.sh</span>
+        </div>
+        <div class="weekday-chart" id="weekday-chart"></div>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card" style="--stat-color:var(--orange)">
+        <div class="stat-label">👥 Thành viên mới</div>
+        <div class="stat-value">${numVi.format(overview.cards.joined.current)}</div>
+        ${deltaHtml(overview.cards.joined, prevLabelShort)}
+      </div>
+      <div class="stat-card" style="--stat-color:var(--cyan)">
+        <div class="stat-label">👁 Lượt xem</div>
+        <div class="stat-value">${numVi.format(overview.cards.viewed.current)}</div>
+        <div class="sparkline" style="color:var(--cyan)">${viewsSpark}</div>
+        ${deltaHtml(overview.cards.viewed, prevLabelShort)}
+      </div>
+      <div class="stat-card" style="--stat-color:var(--purple)">
+        <div class="stat-label">📝 Bài viết</div>
+        <div class="stat-value">${numVi.format(overview.cards.posts.current)}</div>
+        <div class="sparkline" style="color:var(--purple)">${postsSpark}</div>
+        ${deltaHtml(overview.cards.posts, prevLabelShort)}
+      </div>
+      <div class="stat-card" style="--stat-color:var(--green)">
+        <div class="stat-label">⚡ Tương tác</div>
+        <div class="stat-value">${numVi.format(overview.cards.interactions.current)}</div>
+        ${deltaHtml(overview.cards.interactions, prevLabelShort)}
+      </div>
+    </div>
+  `;
+
+  renderLeaderboard(document.getElementById('leaderboard'), ranked);
+  renderWeekdayChart(document.getElementById('weekday-chart'), data.weekdayActivity);
+  renderModerationLog(document.getElementById('modlog'), data.adminModeration);
+
+  try {
+    const topicsRes = await fetch('topics.json');
+    const topicsData = await topicsRes.json();
+    renderTopicsGrep(document.getElementById('topics-grep'), topicsData.topics);
+    const noteEl = document.getElementById('topics-note');
+    noteEl.textContent = 'ⓘ Chủ đề rà theo từ khóa, không phải phân loại của Facebook';
+    noteEl.title = topicsData.note;
+  } catch (err) {
+    document.getElementById('topics-grep').innerHTML = '<div class="loading">Chưa có dữ liệu chủ đề (topics.json).</div>';
+    console.error(err);
+  }
+
+}
+
+main();
+</script>
+</body>
+</html>
