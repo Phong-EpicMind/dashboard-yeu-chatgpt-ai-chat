@@ -28,6 +28,17 @@ body {
 
 .mono { font-family: 'JetBrains Mono', monospace; }
 
+.top-bar {
+  text-align: center;
+  padding: 8px 20px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--orange);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
 .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 64px; }
 
 header {
